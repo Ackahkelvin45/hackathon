@@ -176,5 +176,5 @@ if __name__ == "__main__":
     torch.save({"int": models[best_int].state_dict(), "adv": adv_model.state_dict()}, "models_state.pt")
     # export primary = advanced
     adv_model.eval(); torch.jit.script(adv_model).save("model_scripted.pt")
-    json.dump({"team_name": "CHANGE_ME", "track": "advanced", "self_reported_metrics": evaluate(adv_model), "model_file": "model_scripted.pt", "n_input_features": N_FEATURES}, open("submission.json", "w"), indent=2)
+    json.dump({"team_name": "ZeroTrustAI", "track": "advanced", "self_reported_metrics": evaluate(adv_model), "model_file": "model_scripted.pt", "n_input_features": N_FEATURES}, open("submission.json", "w"), indent=2)
     print("best intermediate:", best_int, R[best_int]["final"]); print(open("submission.json").read())

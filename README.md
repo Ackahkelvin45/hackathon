@@ -27,3 +27,7 @@ python3 -m venv .venv && .venv/bin/pip install torch scikit-learn pandas numpy
 .venv/bin/python solution.py
 ```
 Prints all before/after F1 numbers and writes `model_scripted.pt`, `submission.json`, `results.json`. See `WRITEUP.md`.
+
+Notebook route (what the judges re-run): `pip install matplotlib nbconvert ipykernel`, then
+`python build_notebook.py && python -m nbconvert --to notebook --execute --inplace 02_Intermediate_Advanced_Day2.ipynb`.
+The executed notebook, `cover.png`, `model_scripted.pt` and `submission.json` are committed.
