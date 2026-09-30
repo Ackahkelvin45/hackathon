@@ -135,7 +135,7 @@ for ax, (title, series) in zip(axes, panels):
     ax.grid(axis="y", color="#e6e5e0", lw=0.8); ax.tick_params(colors=MUTED, length=0)
     for s in ax.spines.values(): s.set_visible(False)
 axes[0].set_ylabel("F1 on NSL-KDD test set", color=MUTED)
-axes[0].legend(frameon=False, loc="lower center", ncol=3, fontsize=10, labelcolor=INK)
+fig.legend(*axes[0].get_legend_handles_labels(), frameon=False, loc="upper right", bbox_to_anchor=(0.97, 0.995), ncol=3, fontsize=10, labelcolor=INK)
 fig.suptitle("Flag, drop, clip: robust aggregation for federated intrusion detection", color=INK, fontsize=15, x=0.06, ha="left", weight="bold")
 fig.tight_layout(rect=(0, 0, 1, 0.94)); fig.savefig("cover.png", dpi=150, facecolor=SURF); plt.show()
 '''
