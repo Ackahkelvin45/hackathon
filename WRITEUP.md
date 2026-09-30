@@ -1,6 +1,7 @@
 # Flag, Drop, Clip: a robust aggregator for poisoned federated intrusion detection
 **Subtitle:** Norm-and-direction anomaly detection that names the malicious bank and recovers F1 from 0.05 to 0.70
 **Tracks:** Advanced (primary), Intermediate (supporting)
+**Project link:** https://github.com/Ackahkelvin45/hackathon
 
 ## Headline result (Advanced, primary)
 Same non-IID split, same WeakMLP, same 8 rounds, same seed, client 1 malicious (label flip + 15x scaled update). Test set: NSL-KDD KDDTest+.
