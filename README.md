@@ -1,33 +1,40 @@
-# Secure AI Hackathon Day 2 & 3 — local workspace
+# ZeroTrustAI — Secure AI Hackathon, Day 2 & 3
 
-Competition: https://www.kaggle.com/competitions/secure-ai-hackathon
-Deadline: 2026-09-30 23:59 UTC
+One aggregation function for federated intrusion detection on NSL-KDD that fixes non-IID skew (Intermediate track) and detects and resists a poisoning bank (Advanced track, our primary).
 
-| Path | What |
+![F1 by round, before and after](cover.png)
+
+| Track | Before (naive FedAvg) | After (ours) | Gain |
+|---|---|---|---|
+| Advanced, official attack, seed 42 (exported model) | 0.0511 | 0.6938 | +0.6427 |
+| Advanced, official attack, mean of 5 seeds | 0.2194 | 0.7018 | +0.4824 |
+| Intermediate, mean of 5 seeds | 0.7169 | 0.7473 | +0.0305 |
+
+Full explanation, stress tests and failure cases: [WRITEUP.md](WRITEUP.md).
+
+## Files
+
+| File | What it is |
 |---|---|
-| `docs/OVERVIEW.md` | All Kaggle pages: description, tracks, evaluation rubric, submission requirements, rules, data description |
-| `docs/pages.json`, `docs/competition.json`, `docs/tracks.json` | Raw API responses the overview was built from |
-| `docs/DAY1_README.md`, `docs/DAY1_DATASET.md`, `docs/01_Beginner_Track_Day1.ipynb` | Day 1 material for reference |
-| `kaggle/02_Intermediate_Advanced_Day2.ipynb` | Day 2 starter notebook (the harness: data, partitions, WeakMLP, run_fl, hooks, export cell) |
-| `kaggle/test_public.csv`, `kaggle/sample_submission.csv` | Day 1 leftovers on the competition data tab; not used for Day 2 scoring |
-| `data/KDDTrain+.txt`, `data/KDDTest+.txt` | Raw NSL-KDD, same files the notebook downloads |
-| `repos/NSL-KDD-Dataset/` | Clone of github.com/jmnwong/NSL-KDD-Dataset (the notebook's data source) |
-| `day1_code/` | Our Day 1 scripts (train.py, tune.py, trees*.py) for the reusable pipeline |
+| `02_Intermediate_Advanced_Day2.ipynb` | The organisers' Day 2 notebook with both hooks filled in, fully run. Single source of truth for every number. |
+| `model_scripted.pt` | Final exported model (TorchScript), Advanced track. Takes the standard 41-feature tensor. |
+| `submission.json` | Self-reported metrics for that model. |
+| `cover.png` | Cover chart, drawn by the notebook. |
+| `data/` | NSL-KDD `KDDTrain+.txt` and `KDDTest+.txt`, identical to the files the notebook would download. |
 
-## Deliverables (from Submission Requirements)
-1. Kaggle Writeup, max 1500 words, with before/after F1 clearly stated.
-2. Cover image in Media Gallery.
-3. Public notebook, fully run top to bottom.
-4. Video, 3 minutes or less, on YouTube.
-5. Public GitHub repo with `model_scripted.pt`, `submission.json`, README with reproduction steps.
+## Reproduce
 
-## Reproduce our results
 ```
-python3 -m venv .venv && .venv/bin/pip install torch scikit-learn pandas numpy
-.venv/bin/python solution.py
+python3 -m venv .venv
+.venv/bin/pip install torch scikit-learn pandas numpy matplotlib nbconvert ipykernel
+.venv/bin/python -m nbconvert --to notebook --execute --inplace 02_Intermediate_Advanced_Day2.ipynb
 ```
-Prints all before/after F1 numbers and writes `model_scripted.pt`, `submission.json`, `results.json`. See `WRITEUP.md`.
 
-Notebook route (what the judges re-run): `pip install matplotlib nbconvert ipykernel`, then
-`python build_notebook.py && python -m nbconvert --to notebook --execute --inplace 02_Intermediate_Advanced_Day2.ipynb`.
-The executed notebook, `cover.png`, `model_scripted.pt` and `submission.json` are committed.
+About two minutes on CPU. This reruns every experiment over 5 seeds and rewrites `model_scripted.pt`, `submission.json` and `cover.png`. Built with torch 2.14, scikit-learn 1.9, pandas 3.0, numpy 2.5. On Kaggle or Colab, upload the notebook and run all cells; it downloads the data itself.
+
+## What we changed in the starter notebook
+
+1. One line in `run_fl`: it reseeds at the start of every run, so before/after comparisons share initial weights and batch order.
+2. One function, `make_agg`, passed through the provided `agg_fn` hook for both tracks.
+
+The model, local training, rounds, data split and attack code are untouched.

@@ -1,5 +1,11 @@
 repos/
-kaggle/test_public.csv
+kaggle/
+docs/
+day1_code/
+video_build/
 .venv/
 __pycache__/
 .DS_Store
+.ipynb_checkpoints/
+video.mp4
+VIDEO_SCRIPT.md

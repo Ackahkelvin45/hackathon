@@ -1,59 +1,89 @@
-# Flag, Drop, Clip: a robust aggregator for poisoned federated intrusion detection
-**Subtitle:** Norm-and-direction anomaly detection that names the malicious bank and recovers F1 from 0.05 to 0.70
+# Flag, Drop, Clip — and Stop Weighting by Size
+**Subtitle:** One aggregation function that fixes non-IID skew and names the poisoned bank, with every claim checked over 5 seeds
 **Tracks:** Advanced (primary), Intermediate (supporting)
 **Project link:** https://github.com/Ackahkelvin45/hackathon
 
-## Headline result (Advanced, primary)
-Same non-IID split, same WeakMLP, same 8 rounds, same seed, client 1 malicious (label flip + 15x scaled update). Test set: NSL-KDD KDDTest+.
+## Headline result — Advanced (primary)
 
-| Aggregation under attack | F1 |
-|---|---|
-| Naive FedAvg (before) | **0.0511** |
-| Coordinate median (provided baseline) | 0.6855 |
-| Ours: flag + drop + clip (after) | **0.6968** |
+Official scenario: non-IID split, bank 1 flips its labels and scales its update 15x. Same `WeakMLP`, same 8 rounds, same test set (NSL-KDD `KDDTest+`).
 
-**F1 recovered: +0.6457.**
+| Aggregation under attack | F1, seed 42 (exported model) | F1, mean ± std over 5 seeds |
+|---|---|---|
+| Naive FedAvg (**before**) | **0.0511** | 0.2194 ± 0.1190 |
+| Coordinate median (provided baseline) | 0.6855 | 0.6793 ± 0.0092 |
+| Ours (**after**) | **0.6938** | **0.7018 ± 0.0100** |
 
-Stress tests (final-round F1):
+**F1 recovered: +0.6427** on the notebook's seed, **+0.4824** averaged over 5 seeds. We report both because naive FedAvg under attack swings wildly between seeds and rounds, so a single run overstates the gain. The attacker was flagged in **40 of 40** attacker-rounds, with 1 false flag in 160 honest client-rounds.
 
-| Scenario | Naive FedAvg | Median | Ours |
-|---|---|---|---|
-| 1 attacker, scale 50 | 0.6215 (swings 0.00 to 0.69 between rounds) | 0.6861 | 0.6968 |
-| 2 attackers, scale 15 | 0.0017 | 0.7083 | 0.7132 |
-| 1 attacker, label flip only (no scaling) | 0.6850 | 0.6773 | 0.6926 |
+`model_scripted.pt` in the repo reproduces 0.6938 when loaded on its own.
 
-## What we did
-Each round, for every client we compute its update delta = local weights - previous global weights, then:
-1. **Flag** a client if its delta's L2 norm is more than 3x the median norm, or if its cosine similarity to the coordinate-median delta is negative (it pushes against the consensus direction).
-2. **Drop** flagged clients from the round.
-3. **Clip** the survivors to the median norm.
-4. Size-weighted average of what is left.
+## Supporting result — Intermediate
+
+Non-IID split, no attacker, the *same* aggregation function.
+
+| Aggregation | F1, seed 42 | F1, 5 seeds |
+|---|---|---|
+| Naive FedAvg (**before**) | 0.7117 | 0.7169 ± 0.0057 |
+| Coordinate median (provided) | 0.7489 | 0.7355 ± 0.0148 |
+| Ours (**after**) | 0.7467 | **0.7473 ± 0.0088** |
+| Naive FedAvg on IID data (ceiling) | – | 0.7580 ± 0.0065 |
+
+**Gain: +0.0350** (seed 42), **+0.0305** (5 seeds). That closes 74% of the gap between non-IID and IID.
+
+## What we built
+
+One function, `make_agg`, plugged into the notebook's `agg_fn` hook. Each round it looks at every bank's update (local weights minus previous global weights) and:
+
+1. **Norm rule.** Flags a bank whose update is more than 3x the median length.
+2. **Direction rule.** Flags a bank whose update points against the others (cosine below −0.5 to the sum of their unit updates), but only if those others agree with each other (coherence at least 0.5).
+3. **Drop** flagged banks for that round, never more than a minority.
+4. **Clip** the survivors to the median length.
+5. Take an **equal-weight** mean, not a size-weighted one.
+
+The model, local training, rounds and data split are untouched. Our only harness change is one line: `run_fl` reseeds at the start of each run, so before and after share initial weights and batch order.
 
 ## Why it works
-The attack has two signatures. Scaling by 15 makes the update's norm huge: honest norms were 0.2 to 1.7, the attacker's were 10 to 27. Label flipping makes its direction oppose the honest majority. Norm catches the first, cosine catches the second, so an attacker who stops scaling to hide is still caught by direction. The median is used as the reference because one outlier out of five cannot move it. Clipping bounds the damage of anything that slips through.
 
-## Detection
-Client 1 was flagged in **8 of 8 rounds**. Honest caveat: client 0 was also flagged in rounds 1 and 2 (false positives). Under non-IID data an honest but unusual bank can look adversarial early, before the global model settles. It was readmitted from round 3. With two attackers, both were flagged in all 8 rounds, but honest client 4 was also dropped in 6 rounds. With a non-scaling attacker, round 1 missed it (and wrongly flagged client 0); rounds 2 to 8 caught it by direction alone.
+**Equal weights fix the skew.** Every bank trains one local epoch, so a bank with 8x the rows takes 8x the SGD steps, and its update is already longer. Size-weighting then counts that bank a second time. Bank 2 holds 43% of the rows, so naive FedAvg is close to "whatever bank 2 says". With one local epoch, normalising each update by its step count (FedNova, Wang et al. 2020) reduces to an equal-weight mean, up to a global step size. Two checks support this reading. Equal weights *alone* score 0.7536 ± 0.0094. And on the IID split, where sizes are equal, our aggregator and naive FedAvg are indistinguishable (0.7579 vs 0.7580): the fix only acts when there is skew.
 
-## Intermediate (supporting)
-Non-IID split, no attacker. Naive FedAvg: **0.7117** (IID reference 0.7641).
+**The attack leaves two fingerprints.** Scaling makes the update 9 to 47 times the median length, while honest banks stay within about 2x. Label flipping reverses the gradient, so bank 1's cosine to the others sat between −0.47 and −0.69 from round 2. The norm rule catches the first, the direction rule the second, and clipping bounds anything that slips past both.
 
-| Aggregation | F1 |
-|---|---|
-| Naive FedAvg | 0.7117 |
-| FedAvgM, server momentum 0.9 (ours) | 0.7387 (+0.0270) |
-| FedAvgM 0.7, equal client weights (ours) | 0.7368 |
-| Coordinate median (provided) | 0.7489 (+0.0372) |
+**The detector must know when to abstain.** This was our main lesson. Once the model converges, honest banks with opposite label mixes pull in opposite directions *by design*: an attack-heavy bank and a normal-heavy bank look like adversaries to each other. Without the coherence gate, the detector raises 20 false flags in 400 client-rounds of a clean 16-round run. With the gate it raises none, because it only trusts the direction test while the rest of the consortium agrees with itself.
 
-Server momentum smooths the round-to-round zig-zag caused by skewed clients. Equal weights stop the largest skewed bank dominating.
+## Stress tests: where we win and where we lose
+
+Final F1, mean of 5 seeds.
+
+| Scenario | Naive | Median | Ours | Attacker-rounds caught | False flags |
+|---|---|---|---|---|---|
+| No attacker | 0.7169 | 0.7355 | **0.7473** | – | 0/200 |
+| Bank 1, flip + 50x | 0.5210 | 0.6794 | **0.7018** | 40/40 | 1/160 |
+| Bank 1, flip + 2.9x (just under the norm rule) | 0.6595 | 0.6765 | **0.6987** | 35/40 | 0/160 |
+| Bank 1, flip only | 0.6875 | 0.6747 | **0.6978** | 32/40 | 3/160 |
+| Banks 1+3, flip + 15x | 0.1381 | 0.7348 | **0.7415** | 80/80 | 0/120 |
+| Bank 2 (largest), flip only | 0.3393 | **0.7891** | 0.7617 | 25/40 | 0/160 |
+| Banks 1+3, flip only, colluding | 0.7189 | **0.7471** | 0.7075 | 1/80 | 0/120 |
+| Official attack, 16 rounds | 0.2787 | 0.6848 | **0.6970** | 80/80 | 7/320 |
+
+An attacker who stops scaling to hide is still caught by direction. Round 1 is the usual miss, since from random weights nobody has a clear direction yet.
+
+**We lose twice, and both are instructive.** Two colluding banks that flip without scaling (40% of the consortium) are not detected: they agree with each other, coherence drops, and the detector abstains. It makes no false accusations, but F1 falls slightly below naive. When the largest bank flips, the median beats us by 0.027. In the 16-round run, the 7 false flags all hit bank 0: once attack-heavy bank 1 is removed, bank 0 is the only attack-heavy bank left, and an honest lone minority is geometrically indistinguishable from an attacker. No direction-based test can resolve that.
 
 ## What did not work
-- Weighting clients by closeness of label balance to the global balance: 0.7035, worse than naive. Label balance is too coarse; skew here is by attack family.
-- Our robust aggregator on clean non-IID data: 0.7103, no gain. Dropping unusual honest clients costs information.
-- The provided median beat our momentum method on Intermediate. We report that as is.
+
+- **Server momentum (FedAvgM 0.9):** 0.7234 ± 0.0090. Looked good on one seed, mostly noise over five.
+- **FedProx (mu 0.1):** 0.7177 ± 0.0074. No gain. Drift from the global model was not the problem; double-counting was.
+- **Weighting by label balance:** 0.7137 ± 0.0098, below naive. The skew is by attack family, and label balance is too coarse to see it.
+- **Strikes and permanent quarantine:** an earlier version helped against colluders but locked honest banks out in 16-round runs, so we removed it.
+- **Clipping costs a little:** our full aggregator scores 0.006 below equal weights alone on clean data. We keep it as the price of robustness.
 
 ## Limitations
-Variants were compared on the test set with one seed, so small gaps (0.01) are within noise; the Advanced gain (+0.65) is not. Recall is low (0.54) for every method: the 8-neuron model is the ceiling, not aggregation. The defense assumes attackers are a minority.
+
+- Defended F1 sits near 0.70, below the clean 0.75. That is exactly what four honest banks score when bank 1 never joins at all (0.7009 ± 0.0105, against our 0.7018 under attack). Bank 1 holds real attack data that is lost once its labels are flipped. The defense removes all of the damage; it cannot recover the information.
+- Recall is about 0.54 for every method. `KDDTest+` contains attack types absent from training, and an 8-neuron model is the ceiling. Aggregation cannot fix that.
+- Thresholds (3x, −0.5, 0.5) were set from diagnostics on this split. Gaps under about 0.02 are within seed noise.
+- We assume an honest majority. An attacker who knows the rules can stay inside them, but then clipping and equal weights cap its influence at one bank's share.
 
 ## Reproduce
-Run `02_Intermediate_Advanced_Day2.ipynb` top to bottom. Our one harness change: `run_fl` reseeds at the start of every run so all methods share the same initial weights and batch order. `model_scripted.pt` and `submission.json` are in the repo.
+
+Run `02_Intermediate_Advanced_Day2.ipynb` top to bottom, about two minutes on CPU. It prints every number above, draws the cover chart, and writes `model_scripted.pt` and `submission.json`.
